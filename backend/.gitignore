@@ -1,0 +1,10 @@
+node_modules/
+dist/
+.env
+*.tar
+*.tar.gz
+uploads/
+*.png
+*.jpeg
+*.jpg
+tsconfig.tsbuildinfo

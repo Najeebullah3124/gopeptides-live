@@ -1,0 +1,15 @@
+node_modules/
+frontend/dist/
+backend/dist/
+.DS_Store
+
+# Never publish: secrets, customer data, deploy archives, stale source copies
+.env
+**/.env
+!**/.env.example
+*.db
+*.db.*
+*.sqlite
+*.tar
+*.tar.gz
+backend/src.bak-*/

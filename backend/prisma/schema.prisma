@@ -1,0 +1,487 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                 String         @id @default(cuid())
+  email              String         @unique
+  password           String
+  firstName          String
+  lastName           String
+  phone              String?
+  // SQLite has no native enums — keep as string. Allowed values: 'USER' | 'ADMIN'.
+  role               String         @default("USER")
+  emailVerified      Boolean        @default(false)
+  verificationToken  String?        @unique
+  resetToken         String?        @unique
+  resetTokenExpiry   DateTime?
+  createdAt          DateTime       @default(now())
+  updatedAt          DateTime       @updatedAt
+  orders             Order[]
+  reviews            Review[]
+  wishlist           Wishlist[]
+  addresses          Address[]
+  cart               Cart?
+  refreshTokens      RefreshToken[]
+  blogPosts          BlogPost[]
+
+  @@index([email])
+}
+
+model Product {
+  id           String      @id @default(cuid())
+  name         String
+  slug         String      @unique
+  description  String
+  shortDesc    String
+  price        Float
+  comparePrice Float?
+  stock        Int         @default(0)
+  sku          String      @unique
+  purity       String
+  weight       String
+  casNumber    String
+  category     Category    @relation(fields: [categoryId], references: [id])
+  categoryId   String
+  images       Image[]
+  reviews      Review[]
+  orderItems   OrderItem[]
+  cartItems    CartItem[]
+  wishlist     Wishlist[]
+  views        ProductView[]
+  labelVariants LabelVariant[]
+  badge        String?
+  isActive     Boolean     @default(true)
+  isFeatured   Boolean     @default(false)
+  sequence     String?
+  storage      String?
+  // SQLite stores as TEXT; the Prisma extension in config/database.ts auto-parses to string[].
+  benefits     String      @default("[]")
+  // JSON: { nl: { name, shortDesc, description, benefits }, de: { ... } }
+  translations String      @default("{}")
+  // JSON: { title, description, focusKeywords, canonicalUrl, robots, socialImage, schemaOverrides }
+  seoData      String      @default("{}")
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+
+  @@index([slug])
+  @@index([categoryId])
+  @@index([isActive, isFeatured])
+}
+
+model LabelVariant {
+  id                   String       @id @default(cuid())
+  product              Product      @relation(fields: [productId], references: [id], onDelete: Cascade)
+  productId            String
+  dosage               String
+  batchNumber          String?
+  storageUnopened      String?
+  storageReconstituted String?
+  storageNote          String?
+  shelfLifeDate        String?
+  languageDefault      String       @default("nl")
+  labelWidthMm         Int          @default(40)
+  labelHeightMm        Int          @default(20)
+  qrMode               String       @default("auto")
+  manualQrUrl          String?
+  csvQrUrl             String?
+  imageFileName        String?
+  // JSON: { nl: { storageUnopened, storageReconstituted, storageNote, shelfLifeDate }, de: {...}, en: {...} }
+  translations         String       @default("{}")
+  // JSON: hex colors for label regions, e.g. { frontProductName: "#008080", ... }
+  colorOverrides       String       @default("{}")
+  // JSON: font ids per label region, e.g. { frontProductName: "dejavu-sans", ... }
+  fontOverrides        String       @default("{}")
+  createdAt            DateTime     @default(now())
+  updatedAt            DateTime     @updatedAt
+  assets               LabelAsset[]
+  printLogs            LabelPrintLog[]
+
+  @@unique([productId, dosage])
+  @@index([productId])
+}
+
+model LabelAsset {
+  id             String       @id @default(cuid())
+  labelVariant   LabelVariant @relation(fields: [labelVariantId], references: [id], onDelete: Cascade)
+  labelVariantId String
+  format         String
+  fileName       String
+  filePath       String
+  fileUrl        String
+  widthPx        Int
+  heightPx       Int
+  generatedAt    DateTime     @default(now())
+
+  @@index([labelVariantId, generatedAt])
+}
+
+model LabelPrintLog {
+  id             String       @id @default(cuid())
+  labelVariant   LabelVariant @relation(fields: [labelVariantId], references: [id], onDelete: Cascade)
+  labelVariantId String
+  printedByUserId String?
+  printerTarget  String?
+  printerProfile String
+  copies         Int          @default(1)
+  status         String
+  message        String?
+  createdAt      DateTime     @default(now())
+
+  @@index([labelVariantId, createdAt])
+}
+
+// A shipping-label job waiting to be picked up by the local print agent — a small
+// program that runs on an office PC on the same network as the Zebra printer, since
+// the printer has no internet-reachable IP and this server cannot reach it directly.
+model PrintJob {
+  id        String    @id @default(cuid())
+  order     Order     @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  orderId   String
+  zpl       String
+  // 'PENDING' | 'PRINTED' | 'FAILED'
+  status    String    @default("PENDING")
+  error     String?
+  createdAt DateTime  @default(now())
+  printedAt DateTime?
+
+  @@index([status, createdAt])
+  @@index([orderId])
+}
+
+model Category {
+  id           String    @id @default(cuid())
+  name         String    @unique
+  slug         String    @unique
+  description  String?
+  translations String    @default("{}")
+  // JSON: { title, description, focusKeywords, canonicalUrl, robots, schemaOverrides }
+  seoData      String    @default("{}")
+  products     Product[]
+
+  @@index([slug])
+}
+
+model Order {
+  id              String      @id @default(cuid())
+  orderNumber     String      @unique
+  user            User?       @relation(fields: [userId], references: [id])
+  userId          String?
+  guestEmail      String?
+  // SQLite has no native enums — keep as string. Allowed values:
+  // 'PENDING' | 'PROCESSING' | 'SHIPPED' | 'DELIVERED' | 'CANCELLED' | 'REFUNDED'.
+  status          String      @default("PENDING")
+  items           OrderItem[]
+  subtotal        Float
+  discount        Float       @default(0)
+  shipping        Float
+  tax             Float
+  total           Float
+  // SQLite stores as TEXT; the Prisma extension auto-parses to OrderAddress object.
+  shippingAddress String
+  billingAddress  String?
+  paymentMethod   String
+  paymentIntentId String?     @unique
+  paymentStatus   String      @default("pending")
+  couponCode      String?
+  notes           String?
+  trackingNumber  String?
+  courier         String?
+  printJobs       PrintJob[]
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  @@index([userId])
+  @@index([orderNumber])
+  @@index([status])
+  @@index([paymentIntentId])
+}
+
+model OrderItem {
+  id        String  @id @default(cuid())
+  order     Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  orderId   String
+  product   Product @relation(fields: [productId], references: [id])
+  productId String
+  quantity  Int
+  price     Float
+  name      String
+
+  @@index([orderId])
+}
+
+model Review {
+  id         String   @id @default(cuid())
+  product    Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  productId  String
+  user       User?    @relation(fields: [userId], references: [id])
+  userId     String?
+  guestName  String?
+  guestEmail String?
+  rating     Int
+  title      String
+  body       String
+  // JSON cache of auto-translations: { nl: { title, body }, de: { title, body } }
+  translations String @default("{}")
+  verified   Boolean  @default(false)
+  approved   Boolean  @default(false)
+  createdAt  DateTime @default(now())
+
+  @@index([productId, approved])
+  @@index([userId])
+}
+
+model Cart {
+  id        String     @id @default(cuid())
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId    String     @unique
+  items     CartItem[]
+  updatedAt DateTime   @updatedAt
+}
+
+model CartItem {
+  id        String  @id @default(cuid())
+  cart      Cart    @relation(fields: [cartId], references: [id], onDelete: Cascade)
+  cartId    String
+  product   Product @relation(fields: [productId], references: [id])
+  productId String
+  quantity  Int
+
+  @@unique([cartId, productId])
+  @@index([cartId])
+}
+
+model Address {
+  id         String  @id @default(cuid())
+  user       User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId     String
+  firstName  String
+  lastName   String
+  street     String
+  city       String
+  postalCode String
+  country    String
+  phone      String?
+  isDefault  Boolean @default(false)
+
+  @@index([userId])
+}
+
+model Coupon {
+  id          String    @id @default(cuid())
+  code        String    @unique
+  discount    Float
+  type        String
+  minOrder    Float?
+  maxUses     Int?
+  usedCount   Int       @default(0)
+  oncePerUser Boolean   @default(false)
+  expiresAt   DateTime?
+  isActive    Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+
+  @@index([code])
+}
+
+model Wishlist {
+  id        String   @id @default(cuid())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId    String
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  productId String
+  createdAt DateTime @default(now())
+
+  @@unique([userId, productId])
+  @@index([userId])
+}
+
+model Image {
+  id        String  @id @default(cuid())
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  productId String
+  url       String
+  alt       String?
+  // JSON: responsive derivatives keyed by format/width.
+  variants  String  @default("{}")
+  isPrimary Boolean @default(false)
+  position  Int     @default(0)
+
+  @@index([productId])
+}
+
+model RefreshToken {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId    String
+  expiresAt DateTime
+  revoked   Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([token])
+  @@index([userId])
+}
+
+model BlogCategory {
+  id          String     @id @default(cuid())
+  name        String     @unique
+  slug        String     @unique
+  description String?
+  translations String?
+  posts       BlogPost[]
+  createdAt   DateTime   @default(now())
+
+  @@index([slug])
+}
+
+model BlogPost {
+  id             String        @id @default(cuid())
+  title          String
+  slug           String        @unique
+  content        String
+  excerpt        String
+  featuredImage  String?
+  featuredImageAlt String?
+  // Status: 'PUBLISHED' | 'DRAFT' | 'PAUSED'
+  status         String        @default("DRAFT")
+  category       BlogCategory? @relation(fields: [categoryId], references: [id])
+  categoryId     String?
+  author         User          @relation(fields: [authorId], references: [id])
+  authorId       String
+  // SQLite stores as TEXT; parsed as string[] in app code
+  tags           String        @default("[]")
+  seoTitle       String?
+  seoDescription String?
+  // JSON: { focusKeywords, canonicalUrl, robots, socialImage, schemaOverrides }
+  seoData        String        @default("{}")
+  readTime       Int?
+  viewsCount     Int           @default(0)
+  // The language the admin wrote this post in — 'en' | 'nl' | 'de'
+  baseLanguage   String        @default("en")
+  // JSON: { nl: { title, content, excerpt }, de: { title, content, excerpt } }
+  translations   String        @default("{}")
+  publishedAt    DateTime?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  @@index([slug])
+  @@index([status])
+  @@index([authorId])
+  @@index([categoryId])
+}
+
+model ProductView {
+  id        String   @id @default(cuid())
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  productId String
+  userId    String?
+  sessionId String?
+  createdAt DateTime @default(now())
+
+  @@index([productId])
+  @@index([createdAt])
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  userId    String?
+  action    String
+  entity    String
+  entityId  String?
+  metadata  String   @default("{}")
+  ipAddress String?
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([createdAt])
+  @@index([entity])
+}
+
+// Enums removed — SQLite doesn't support them.
+// Role is a String ('USER' | 'ADMIN') in the User model.
+// Order.status is a String ('PENDING' | 'PROCESSING' | 'SHIPPED' | 'DELIVERED' | 'CANCELLED' | 'REFUNDED').
+// BlogPost.status is a String ('PUBLISHED' | 'DRAFT' | 'PAUSED').
+
+model Subscriber {
+  id          String   @id @default(cuid())
+  email       String   @unique
+  name        String?
+  subscribedAt DateTime @default(now())
+
+  @@index([email])
+  @@index([subscribedAt])
+}
+
+// Contact form submissions — admin Contact/Support inbox (email still sent separately).
+model ContactMessage {
+  id        String    @id @default(cuid())
+  name      String
+  email     String
+  subject   String
+  message   String
+  isRead    Boolean   @default(false)
+  createdAt DateTime  @default(now())
+  readAt    DateTime?
+
+  @@index([createdAt])
+  @@index([isRead])
+  @@index([email])
+}
+
+model SystemSetting {
+  key       String   @id
+  value     String
+  updatedAt DateTime @updatedAt
+}
+
+model SeoAuditRun {
+  id        String   @id @default(cuid())
+  type      String
+  targetUrl String
+  status    String   @default("COMPLETED")
+  score     Float?
+  summary   String   @default("{}")
+  results   String   @default("{}")
+  createdAt DateTime @default(now())
+
+  @@index([type, createdAt])
+}
+
+model SeoRedirect {
+  id          String   @id @default(cuid())
+  sourcePath  String   @unique
+  destination String
+  statusCode  Int      @default(301)
+  isActive    Boolean  @default(true)
+  hits        Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([isActive])
+}
+
+model SeoNotFoundLog {
+  id        String   @id @default(cuid())
+  path      String   @unique
+  hits      Int      @default(1)
+  lastSeen  DateTime @default(now())
+  createdAt DateTime @default(now())
+}
+
+model SeoKeyword {
+  id         String   @id @default(cuid())
+  keyword    String   @unique
+  targetPath String?
+  priority   Int      @default(0)
+  notes      String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([priority])
+}
+

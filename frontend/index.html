@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="nl">
+  <head>
+    <meta charset="UTF-8" />
+    <script>
+      (function () {
+        var p = new URLSearchParams(location.search).get('lang');
+        var host = location.hostname;
+        if (p === 'en' || p === 'de' || p === 'nl') document.documentElement.lang = p;
+        else if (host.endsWith('.de')) document.documentElement.lang = 'de';
+        else document.documentElement.lang = 'nl';
+      })();
+    </script>
+    <style>#seo-prerender{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}</style>
+    <link rel="preload" as="image" href="/logo-336.webp" type="image/webp" fetchpriority="high" />
+    <link rel="icon" type="image/webp" href="/logo-168.webp" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="GoPeptides — HPLC-tested research peptides with CoA included. 48-hour EU delivery, >99% purity, money-back guarantee." />
+    <meta name="theme-color" content="#071019" />
+    <title>GoPeptides — Research Peptides</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
